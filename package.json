@@ -1,0 +1,49 @@
+{
+  "name": "scratch-cloud",
+  "version": "0.1.0",
+  "description": "Scratch Cloud Variable API Client",
+  "main": "dist/index.cjs.js",
+  "module": "dist/index.esm.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Yu-yu0202/scratch-cloud.git"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.esm.js",
+      "require": "./dist/index.cjs.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "rollup -c",
+    "test": "jest",
+    "lint": "eslint . --ext .ts,.tsx",
+    "prepare": "pnpm run build"
+  },
+  "keywords": [
+    "scratch",
+    "cloud",
+    "cloud variable"
+  ],
+  "author": "Yu-yu0202",
+  "license": "MPL-2.0",
+  "bugs": {
+    "url": "https://github.com/Yu-yu0202/scratch-cloud/issues"
+  },
+  "homepage": "https://github.com/Yu-yu0202/scratch-cloud#readme",
+  "engines": {
+    "node": ">=21.0.0"
+  },
+  "packageManager": "pnpm@10.12.1",
+  "devDependencies": {
+    "jest": "^30.0.4",
+    "rollup": "^4.44.1",
+    "rollup-plugin-typescript2": "^0.36.0",
+    "typescript": "^5.8.3"
+  }
+}
