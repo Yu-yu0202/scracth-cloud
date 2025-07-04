@@ -32,7 +32,7 @@ export class CloudVariable implements CloudRecorder {
                     this.cloud_values[data.name] = data.value;
                 }
             } catch (e) {
-                console.error("Cloud variable parse error:", e);
+                throw Error("Cloud variable parse error:" + (e as string));
             }
         };
     }
@@ -49,80 +49,98 @@ export class CloudVariable implements CloudRecorder {
 }
 
 export class conn {
-    private project_id: string | number;
-    private cloud_host: string = 'wss://clouddata.scratch.mit.edu/';
-    private username: string;
-    private header?: any = {};
-    private cookie?: any = {};
-    private origin?: string = '';
-    private print_connect_message: boolean;
     private websocket: WebSocket | null = null;
-    private is_connected: boolean = false;
-    private recorder: CloudVariable | null = null;
-    
-    constructor(project_id: string | number, username: string, cloud_host: string, header?: any, cookie?: any, origin?: string, print_connect_message = true) {
-        this.project_id = project_id;
-        this.cloud_host = cloud_host;
-        this.username = username;
-        this.header = header;
-        this.cookie = cookie;
-        this.origin = origin;
-        this.print_connect_message = print_connect_message;
-    }
+    private recorder: CloudRecorder | null = null;
+    private is_connected = false;
+
+    constructor(
+        private project_id: string | number,
+        private username: string,
+        private cloud_host = 'wss://clouddata.scratch.mit.edu/',
+        private header?: any,
+        private cookie?: any,
+        private origin?: string,
+        private print_connect_message = true
+    ) {}
 
     private handshake(): void {
-        if (!this.websocket || this.websocket?.readyState !== 1) throw new Error('cloud variable connection is not established.');
-        try {
-            this.websocket.send(JSON.stringify({"method": "handshake", "user": this.username, "project_id": this.project_id}));
-            this.is_connected = true;
-        } catch(e) {
-            throw new Error(`[cloud variable] handshake error: ${e as string}`)
+        if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
+            throw new Error('Cloud variable connection is not established.');
         }
-        return;
+        try {
+            this.websocket.send(JSON.stringify({
+                method: "handshake",
+                user: this.username,
+                project_id: this.project_id
+            }));
+            this.is_connected = true;
+        } catch (e) {
+            throw new Error(`[cloud variable] handshake error: ${e as string}`);
+        }
     }
 
-    public createConnection(): void {
-        this.websocket = new WebSocket(this.cloud_host);
-        this.handshake();
-        if (this.print_connect_message) console.log('[cloud variable] connected to cloud server ' + this.cloud_host);
-        if (this.websocket) {
-            this.recorder = new CloudVariable(this.websocket);
-            this.recorder.start();
-        }
+    public async createConnection(): Promise<void> {
+        return new Promise((resolve, reject) => {
+            if (this.websocket && this.websocket?.readyState !== WebSocket.CLOSED) {this.websocket.close();}
+            this.websocket = new WebSocket(this.cloud_host);
+            this.websocket.onopen = () => {
+                try {
+                    this.handshake();
+                    this.recorder = new CloudVariable(this.websocket!);
+                    this.recorder.start();
+                    if (this.print_connect_message) {
+                        console.log('[cloud variable] connected to cloud server ' + this.cloud_host);
+                    }
+                    resolve();
+                } catch (e) {
+                    reject(e);
+                }
+            };
+            this.websocket.onerror = (e) => reject(e);
+        });
+    }
+    
+    public reconnect(): void {
+        this.closeConnection();
+        this.createConnection();
     }
 
     public closeConnection(): void {
         try {
             this.recorder?.disconnect();
-            this.websocket?.close()
+            this.websocket?.close();
+        } finally {
             this.is_connected = false;
             this.recorder = null;
-        } catch(e) {
-            return;
         }
-        return;
     }
 
     public set_var(variable: string, value: any) {
-        if (!this.websocket || !this.is_connected) throw new Error('cloud variable connection is not established.');
+        if (!this.websocket || !this.is_connected) {
+            throw new Error('cloud variable connection is not established.');
+        }
         if (variable.startsWith('☁ ')) {
             variable = variable.slice(2);
         }
-        this.websocket?.send(JSON.stringify({"method": "set", "name": "☁ " + variable, "value": value, "user": this.username, "project_id": this.project_id}));
+        this.websocket.send(JSON.stringify({
+            method: "set",
+            name: "☁ " + variable,
+            value,
+            user: this.username,
+            project_id: this.project_id
+        }));
     }
-    
+
     public async get_var(variable: string): Promise<string | number | null> {
         if (!this.websocket || !this.is_connected) throw new Error('cloud variable connection is not established.');
         if (!this.recorder) throw new Error('cloud recorder is not initialized.');
-        
-        if (variable.startsWith('☁ ')) {
-            variable = variable.slice(2);
-        }
+
+        if (variable.startsWith('☁ ')) variable = variable.slice(2);
         variable = '☁ ' + variable;
 
         const startTime = Date.now();
-        while (Object.keys(this.recorder.cloud_values).length === 0 && 
-               startTime > Date.now() - 5000) {
+        while (Object.keys(this.recorder.cloud_values).length === 0 &&
+               Date.now() - startTime < 5000) {
             await new Promise(resolve => setTimeout(resolve, 10));
         }
 
